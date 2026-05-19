@@ -1,0 +1,92 @@
+# =========================================================
+# --- Cloudflare DDNS 全自动脚本 for RouterOS v7 ---
+# --- 自动从On Up事件获取IP和接口 ---
+# =========================================================
+
+# ----------------------------------------------------
+# --- 参数配置 ---
+# ----------------------------------------------------
+# CloudFlare Token（DNS 权限）
+:local cfToken  "你的 Token 数据"
+# CloudFlare 区域 ID
+:local cfZoneId "你的区域 ID"
+
+# --- 接口 -> 域名 映射关系 (在这里扩展) ---
+# 如果只有一条拨号线路，只须将域名赋值给 cfDomain，将运营商名字赋值给 ISP；
+# 后面两行 if 语句屏蔽即可。
+:local cfDomain "lt.yourdomain.com"
+:local ISP "联通"
+# 多条线路时使用
+# 如果有多条拨号线路，上面的 cfDomain 和 ISP 两个值留空（不可删除）；
+# 取消下面两条 if 语句前面的 #，并按实际情况填写 ifname（拨号接口名称）、cfDomain 和 ISP。
+# if ($ifname = "pppoe-out-LT") do={:set cfDomain "lt.yourdomain.com";:set ISP "联通"}
+# if ($ifname = "pppoe-out-YD") do={:set cfDomain "yd.yourdomain.com";:set ISP "移动"}
+# 如果有第三个拨号，在这里继续添加。
+
+# --- 调用钉钉发送通知（可选，关键字方式）---
+# 不需要钉钉时可以将 url 变量留空，或者全部删除
+:global dingtalk do={
+    :local keyword "关键字";
+    :local url  "https://oapi.dingtalk.com/robot/send?access_token=你的钉钉token"
+    :local now ([/system/clock get date] ." ".[/system/clock get time])
+    :local data "{\"msgtype\": \"text\", \"text\": {\"content\": \"$now $1 $keyword\"}}"
+    :local header "Content-Type:application/json";
+    :log info "data: $data"
+     if ([:len $url] > 0) do={
+    do {  
+        /tool/fetch http-method=post mode=https http-header-field="$header" http-data="$data" url="$url"
+    } on-error={log error "发送钉钉消息失败。"}
+    }
+}
+
+# ----------------------------------------------------
+# --- 合法性检查 ---
+# 接口检查
+if ([:len $ifname] = 0) do={
+    :log warning "未获取到 PPPOE 接口名称，脚本退出。"
+    :quit
+}
+# 域名检查
+if ([:len $cfDomain] = 0) do={
+    :log warning "域名为空，脚本退出。"
+    :quit
+}
+# 公网 IP 检查
+if ([:len $currentIP] = 0) do={
+    :log warning "未获取到公网 IP 地址，脚本退出。"
+    :quit
+} else={:log info "$ISP 接口名称：$ifname，公网 IP 地址：$currentIP，匹配域名：$cfDomain"}
+
+# ---  查询Cloudflare上的DNS记录信息 ---
+:local recordId ""
+:local dnsIP ""
+:local recordQueryUrl "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records?name=$cfDomain&type=A"
+:local queryResponse [/tool fetch url=$recordQueryUrl http-header-field="Authorization: Bearer $cfToken" as-value output=user]
+if ([:find ($queryResponse->"data") "\"success\":true"] != nil) do={
+    :local responseData ($queryResponse->"data")
+    :local idStart [:find $responseData "\"id\":\""]
+    if ($idStart != nil) do={
+        :set idStart ($idStart + 6); :local idEnd [:find $responseData "\"" $idStart]; :set recordId [:pick $responseData $idStart $idEnd]
+        :local contentStart ([:find $responseData "\"content\":\""] + 11); :local contentEnd [:find $responseData "\"" $contentStart]; :set dnsIP [:pick $responseData $contentStart $contentEnd]
+        :log info "$ISP接口：域名 $cfDomain 当前解析记录为: $dnsIP"
+    } else={ :log error "$ISP接口：API调用成功，但未找到域名 $cfDomain 的 A 类型记录。"; :error "未找到DNS记录" }
+} else={ :log error "$ISP接口：查询 DNS 信息失败。"; :error "查询DNS信息失败" }
+
+# --- 对比IP并决定是否更新 ---
+if ([:len $recordId] > 0) do={
+    if ($currentIP = $dnsIP) do={
+        :log info "$ISP接口：IP地址 ($currentIP) 未变更，无需更新。"
+    } else={
+        :log warning "$ISP接口：IP地址已变更 ($dnsIP -> $currentIP)。准备更新..."
+        # --- 执行更新操作 ---
+        :local cfApiUrl "https://api.cloudflare.com/client/v4/zones/$cfZoneId/dns_records/$recordId"
+        :local jsonData "{\"type\":\"A\",\"name\":\"$cfDomain\",\"content\":\"$currentIP\",\"ttl\":120,\"proxied\":false}"
+        :local updateResponse [/tool fetch url=$cfApiUrl http-method=put http-header-field="Authorization: Bearer $cfToken,Content-Type: application/json" http-data=$jsonData as-value output=user]
+        if ([:find ($updateResponse->"data") "\"success\":true"] != nil) do={
+            :local msg "$ISP接口：公网 IP 变更为  $currentIP，域名 $cfDomain 的DNS记录更新成功。"
+            :log info $msg
+            # ---发送钉钉消息，可选 ---
+            [$dingtalk $msg]
+        } else={ :log error "$ISP接口：DNS记录更新失败。" }
+    }
+}
