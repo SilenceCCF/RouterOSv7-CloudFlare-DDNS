@@ -11,6 +11,11 @@
 # CloudFlare 区域 ID
 :local cfZoneId "你的区域 ID"
 
+# 设备位置
+:local location "金色阳光花园"
+# 发送消息接口，钉钉（dingtalk）和企业微信（wecom）可选：
+:local msgtype "wecom"
+
 # --- 接口 -> 域名 映射关系 (在这里扩展) ---
 # 如果只有一条拨号线路，只须将域名赋值给 cfDomain，将运营商名字赋值给 ISP；
 # 后面两行 if 语句屏蔽即可。
@@ -23,20 +28,12 @@
 # if ($ifname = "pppoe-out-YD") do={:set cfDomain "yd.yourdomain.com";:set ISP "移动"}
 # 如果有第三个拨号，在这里继续添加。
 
-# --- 调用钉钉发送通知（可选，关键字方式）---
-# 不需要钉钉时可以将 url 变量留空，或者全部删除
-:global dingtalk do={
-    :local keyword "关键字";
-    :local url  "https://oapi.dingtalk.com/robot/send?access_token=你的钉钉token"
-    :local now ([/system/clock get date] ." ".[/system/clock get time])
-    :local data "{\"msgtype\": \"text\", \"text\": {\"content\": \"$now $1 $keyword\"}}"
-    :local header "Content-Type:application/json";
-    :log info "data: $data"
-     if ([:len $url] > 0) do={
-    do {  
-        /tool/fetch http-method=post mode=https http-header-field="$header" http-data="$data" url="$url"
-    } on-error={log error "发送钉钉消息失败。"}
-    }
+# 发送通知（可选）
+:local SendMsg do={
+  # 指定发送消息脚本名称
+  :local scrName $1
+  :local dtFunc [:parse [/system script get $scrName source]]
+  $dtFunc msg=$2
 }
 
 # ----------------------------------------------------
@@ -83,10 +80,10 @@ if ([:len $recordId] > 0) do={
         :local jsonData "{\"type\":\"A\",\"name\":\"$cfDomain\",\"content\":\"$currentIP\",\"ttl\":120,\"proxied\":false}"
         :local updateResponse [/tool fetch url=$cfApiUrl http-method=put http-header-field="Authorization: Bearer $cfToken,Content-Type: application/json" http-data=$jsonData as-value output=user]
         if ([:find ($updateResponse->"data") "\"success\":true"] != nil) do={
-            :local msg "$ISP接口：公网 IP 变更为  $currentIP，域名 $cfDomain 的DNS记录更新成功。"
+            :local msg "【$location】$ISP接口：公网 IP 变更为  $currentIP，域名 $cfDomain 的DNS记录更新成功。"
             :log info $msg
-            # ---发送钉钉消息，可选 ---
-            [$dingtalk $msg]
+            # ---发送消息，可选 ---
+            [$SendMsg $msgtype $msg] 
         } else={ :log error "$ISP接口：DNS记录更新失败。" }
     }
 }
