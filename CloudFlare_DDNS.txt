@@ -16,17 +16,7 @@
 # 发送消息接口，钉钉（dingtalk）和企业微信（wecom）可选：
 :local msgtype "wecom"
 
-# --- 接口 -> 域名 映射关系 (在这里扩展) ---
-# 如果只有一条拨号线路，只须将域名赋值给 cfDomain，将运营商名字赋值给 ISP；
-# 后面两行 if 语句屏蔽即可。
-:local cfDomain "lt.yourdomain.com"
-:local ISP "联通"
-# 多条线路时使用
-# 如果有多条拨号线路，上面的 cfDomain 和 ISP 两个值留空（不可删除）；
-# 取消下面两条 if 语句前面的 #，并按实际情况填写 ifname（拨号接口名称）、cfDomain 和 ISP。
-# if ($ifname = "pppoe-out-LT") do={:set cfDomain "lt.yourdomain.com";:set ISP "联通"}
-# if ($ifname = "pppoe-out-YD") do={:set cfDomain "yd.yourdomain.com";:set ISP "移动"}
-# 如果有第三个拨号，在这里继续添加。
+#删除域名接口对应关系，相关参数直接由接口脚本传递过来。
 
 # 发送通知（可选）
 :local SendMsg do={
