@@ -12,7 +12,7 @@
 :local cfZoneId "你的区域 ID"
 
 # 设备位置
-:local location "金色阳光花园"
+:local location "家"
 # 发送消息接口，钉钉（dingtalk）和企业微信（wecom）可选：
 :local msgtype "wecom"
 
