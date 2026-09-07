@@ -1,7 +1,7 @@
 # 延时 2 秒
 delay 2s
 # 要调用的 DDNS 脚本名称
-:local scrName "CloudFlare_DDNS-param"
+:local scrName "CloudFlare_DDNS"
 # 此接口使用的域名
 :local cfDomain "yd.yourdomain.com"
 # 此接口的运营商名称
